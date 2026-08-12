@@ -1,0 +1,33 @@
+name: Dispatch Reminder Jobs
+
+on:
+  schedule:
+    - cron: "2/5 * * * *"
+  workflow_dispatch:
+
+jobs:
+  dispatch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Call jobs-dispatch endpoint
+        env:
+          DISPATCH_BASE_URL: ${{ secrets.DISPATCH_BASE_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          set -euo pipefail
+
+          if [ -z "${DISPATCH_BASE_URL}" ]; then
+            echo "DISPATCH_BASE_URL secret is not set."
+            exit 1
+          fi
+
+          if [ -z "${CRON_SECRET}" ]; then
+            echo "CRON_SECRET secret is not set."
+            exit 1
+          fi
+
+          curl --fail --show-error --silent \
+            -X GET "${DISPATCH_BASE_URL%/}/api/jobs-dispatch" \
+            -H "Authorization: Bearer ${CRON_SECRET}" \
+            -H "User-Agent: task-reminder-github-actions"
