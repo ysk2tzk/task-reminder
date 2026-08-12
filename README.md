@@ -10,7 +10,7 @@
 - 完了 / スキップの履歴管理
 - Web Push 購読登録と Service Worker 受信
 - PWA manifest / Service Worker 対応
-- GitHub Actions からの定刻・再通知送信
+- 外部 Cron からの定刻・再通知送信
 
 ## 前提
 
@@ -28,7 +28,7 @@ npm run serve:static
 
 その後 `http://localhost:4173` を開いてください。
 
-ただしこの方法では `api/` が動かないため、保存・Push・Cron のデバッグはできません。
+ただしこの方法では `api/` が動かないため、保存・Push・外部 Cron のデバッグはできません。
 
 Web Push や API を含めて動かす場合は、ローカルで `Vercel dev` を使います。
 
@@ -177,7 +177,7 @@ curl -X GET http://localhost:3000/api/jobs-dispatch \
 - `POST /api/push-test`
   - 最新の購読先へテスト通知を送ります
 - `GET /api/jobs-dispatch`
-  - GitHub Actions または手動実行で呼び出し、期限到来した pending タスクを再通知します
+  - `cron-job.org` または手動実行で呼び出し、期限到来した pending タスクを再通知します
 - `GET /api/google-calendar-connect`
   - Google OAuth の開始 URL を返します
 - `GET /api/google-calendar-callback`
@@ -253,7 +253,7 @@ curl -X POST https://<your-domain>/api/push-test \
 
 ### 6. 定刻通知を確認する
 
-- GitHub Actions の schedule が `/api/jobs-dispatch` を 5 分おきに実行します
+- `cron-job.org` が `/api/jobs-dispatch` を 5 分おきに実行します
 - `pending` かつ `next_notification_at <= 現在時刻` の occurrence が通知対象です
 - 手動確認する場合は次を使えます
 
@@ -262,10 +262,10 @@ curl -X GET https://<your-domain>/api/jobs-dispatch \
   -H "Authorization: Bearer <CRON_SECRET>"
 ```
 
-## GitHub Actions で 5 分 Cron を動かす
+## cron-job.org で 5 分 Cron を動かす
 
 2026年8月12日時点では、Vercel Hobby の Cron は 1 日 1 回までです。  
-このリポジトリには、無料で 5 分おきに `/api/jobs-dispatch` を叩く GitHub Actions ワークフローを同梱しています。
+そのため、このプロジェクトでは無料の外部 Cron として `cron-job.org` を使い、5 分おきに `/api/jobs-dispatch` を叩く運用を前提にしています。
 
 ### 1. Vercel を先にデプロイする
 
@@ -281,41 +281,33 @@ npx vercel --prod
 https://task-reminder.vercel.app
 ```
 
-### 2. GitHub Secrets を設定する
+### 2. cron-job.org でジョブを作る
 
-GitHub 側で必要なのは次の 2 つです。
+必要なのは次の 2 つです。
 
 - `DISPATCH_BASE_URL`
   例: `https://task-reminder.vercel.app`
 - `CRON_SECRET`
   Vercel 側に設定したものと同じ値
 
-GitHub リポジトリの `Settings` → `Secrets and variables` → `Actions` → `New repository secret` から追加します。
+`cron-job.org` で新しい Cron job を作成し、次を設定します。
 
-### 3. ワークフローを有効にする
+- URL
+  - `https://<your-domain>/api/jobs-dispatch`
+- Method
+  - `GET`
+- Headers
+  - `Authorization: Bearer <CRON_SECRET>`
+- Schedule
+  - 5 分ごと
 
-ワークフロー本体は [`.github/workflows/jobs-dispatch.yml`](/home/netforce/task-reminder/.github/workflows/jobs-dispatch.yml:1) です。
+### 3. 動作確認する
 
-このワークフローは次の 2 つで実行できます。
+作成後に `Run now` 相当の手動実行ができる場合は、それで疎通確認するのがおすすめです。
 
-- 5 分おきの自動実行
-- GitHub の Actions 画面からの手動実行
+レスポンスが `200` で、本文に `dispatchedOccurrences` と `sentCount` が返れば動作確認できます。
 
-`workflow_dispatch` を入れてあるので、初回確認は手動実行がおすすめです。
-
-### 4. 手動で動作確認する
-
-GitHub のリポジトリ画面で `Actions` → `Dispatch Reminder Jobs` → `Run workflow` を押します。
-
-成功すれば、`/api/jobs-dispatch` が呼ばれます。
-
-### 5. スケジュールについて
-
-GitHub Actions の最短実行間隔は 5 分です。  
-また、GitHub 公式では毎時ちょうど付近は混雑で遅延しやすいと案内されています。  
-そのため、このワークフローは `2/5 * * * *` にして、毎時 2 分始まりで実行するようにしています。
-
-### 6. API を手動で叩いて確認する
+### 4. API を手動で叩いて確認する
 
 必要なら、直接次でも確認できます。
 
@@ -358,6 +350,5 @@ curl -X GET https://<your-domain>/api/jobs-dispatch \
 - `python`/静的配信では UI 確認のみ、`vercel dev` または `npm run dev:vercel` では API を含めた挙動確認ができます
 - ローカル反復デバッグは `npm run dev:local` が最も安定します
 - 2026年8月12日時点で Vercel Hobby の Cron は 1日1回制限です
-- GitHub Actions の schedule は最短 5 分間隔です
-- GitHub 公式では、毎時ちょうど付近は高負荷で遅延しやすいと案内されています
+- `cron-job.org` は無料で 5 分ごとの HTTP 実行に使えます
 - Google Calendar の完了同期は `POST /api/state` 保存後にサーバー側で実行します
