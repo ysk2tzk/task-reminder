@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#184e77" />
+    <meta name="description" content="指定時刻に通知し、完了まで再通知するタスクリマインダー" />
+    <link rel="manifest" href="./manifest.webmanifest" />
+    <link rel="icon" href="./icons/icon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="./styles.css" />
+    <title>実行支援</title>
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="topbar">
+        <div>
+          <p class="eyebrow">Task Reminder PWA</p>
+          <h1>実行支援</h1>
+        </div>
+      </header>
+
+      <main id="app"></main>
+
+      <nav class="tabbar" aria-label="メインナビゲーション">
+        <a href="#/home" data-tab="home">ホーム</a>
+        <a href="#/tasks" data-tab="tasks">タスク</a>
+        <a href="#/history" data-tab="history">履歴</a>
+        <a href="#/settings" data-tab="settings">設定</a>
+      </nav>
+    </div>
+
+    <div id="toast-root" class="toast-root" aria-live="polite" aria-atomic="true"></div>
+
+    <script type="module" src="./app.js"></script>
+  </body>
+</html>

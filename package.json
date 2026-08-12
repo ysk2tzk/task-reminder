@@ -1,0 +1,17 @@
+{
+  "name": "task-reminder",
+  "version": "0.2.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev:vercel": "vercel dev",
+    "dev:local": "node scripts/dev-server.mjs",
+    "serve:static": "python3 -m http.server 4173",
+    "check": "node --check app.js && node --check api/public-config.js && node --check api/state.js && node --check api/push-subscriptions.js && node --check api/push-test.js && node --check api/jobs-dispatch.js && node --check api/google-calendar-connect.js && node --check api/google-calendar-callback.js && node --check api/google-calendar-calendars.js && node --check api/google-calendar-disconnect.js && node --check api/google-calendar-test.js && node --check lib/server/google-calendar.js && node --check lib/server/state-sync.js && node --check scripts/dev-server.mjs"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.56.1",
+    "web-push": "^3.6.7",
+    "ws": "^8.18.3"
+  }
+}

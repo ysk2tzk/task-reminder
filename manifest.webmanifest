@@ -1,0 +1,22 @@
+{
+  "name": "実行支援",
+  "short_name": "実行支援",
+  "description": "指定時刻に通知し、完了まで再通知するタスクリマインダー",
+  "start_url": "./index.html#/home",
+  "display": "standalone",
+  "background_color": "#f4f8fb",
+  "theme_color": "#184e77",
+  "icons": [
+    {
+      "src": "./icons/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml"
+    },
+    {
+      "src": "./icons/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "maskable"
+    }
+  ]
+}
