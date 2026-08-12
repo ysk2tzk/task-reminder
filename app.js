@@ -275,13 +275,6 @@ function renderTaskFormPage(mode, taskId = null) {
           <input id="reminderIntervalMinutes" name="reminderIntervalMinutes" type="number" min="1" max="1440" required value="${escapeAttr(String(values.reminderIntervalMinutes))}" />
         </div>
 
-        ${mode === "edit" ? `
-          <label class="toggle">
-            <input name="isActive" type="checkbox" ${values.isActive ? "checked" : ""} />
-            <span>${values.isActive ? "有効" : "無効"}にする</span>
-          </label>
-        ` : ""}
-
         <div class="actions">
           <button class="primary-button" type="submit">${mode === "create" ? "登録" : "保存"}</button>
           <button class="ghost-button" data-action="go" data-target="#/tasks" type="button">キャンセル</button>
@@ -597,7 +590,7 @@ async function upsertTaskFromForm(form) {
     scheduledTime: formData.get("scheduledTime")?.toString() || "",
     weekdays: scheduleType === "weekly" ? weekdays : [],
     reminderIntervalMinutes: Number(formData.get("reminderIntervalMinutes")),
-    isActive: form.dataset.mode === "edit" ? formData.get("isActive") === "on" : true,
+    isActive: true,
   };
 
   validateTask(taskPayload);
@@ -605,6 +598,7 @@ async function upsertTaskFromForm(form) {
   const state = getState();
   if (form.dataset.mode === "edit" && form.dataset.id) {
     const index = state.tasks.findIndex((task) => task.id === form.dataset.id);
+    taskPayload.isActive = state.tasks[index]?.isActive ?? true;
     state.tasks[index] = {
       ...state.tasks[index],
       ...taskPayload,
