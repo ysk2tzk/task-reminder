@@ -2,6 +2,15 @@ import { fromError, methodNotAllowed, ok, createHttpError, getHeader, send } fro
 import { getSupabaseAdmin } from "../lib/server/supabase.js";
 import { sendPush } from "../lib/server/push.js";
 
+const JST_DATE_TIME_FORMATTER = new Intl.DateTimeFormat("ja-JP", {
+  timeZone: "Asia/Tokyo",
+  year: "numeric",
+  month: "numeric",
+  day: "numeric",
+  hour: "2-digit",
+  minute: "2-digit",
+});
+
 export default async function handler(request, response) {
   try {
     if (request.method !== "GET") {
@@ -42,7 +51,7 @@ export default async function handler(request, response) {
       const task = Array.isArray(occurrence.tasks) ? occurrence.tasks[0] : occurrence.tasks;
       const payload = {
         title: `実行支援: ${task.title}`,
-        body: `予定時刻 ${new Date(occurrence.scheduled_at).toLocaleString("ja-JP")} のタスクが未完了です。`,
+        body: `予定時刻 ${formatJstDateTime(occurrence.scheduled_at)} のタスクが未完了です。`,
         url: "/#/home",
         tag: occurrence.id,
       };
@@ -86,4 +95,8 @@ export default async function handler(request, response) {
   } catch (error) {
     return send(response, fromError(error));
   }
+}
+
+function formatJstDateTime(value) {
+  return JST_DATE_TIME_FORMATTER.format(new Date(value));
 }

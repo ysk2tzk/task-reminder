@@ -752,9 +752,9 @@ function ensureUpcomingOccurrences(taskId = null) {
   const tasks = taskId ? state.tasks.filter((task) => task.id === taskId) : state.tasks;
 
   for (const task of tasks) {
-    const pendingScheduledKeys = new Set(
+    const existingScheduledKeys = new Set(
       state.occurrences
-        .filter((item) => item.taskId === task.id && item.status === "pending")
+        .filter((item) => item.taskId === task.id)
         .map((item) => item.scheduledAt)
     );
 
@@ -764,7 +764,7 @@ function ensureUpcomingOccurrences(taskId = null) {
 
     const scheduledDates = generateScheduleDates(task, now, horizon);
     for (const scheduledAt of scheduledDates) {
-      if (pendingScheduledKeys.has(scheduledAt)) {
+      if (existingScheduledKeys.has(scheduledAt)) {
         continue;
       }
       const createdAt = new Date().toISOString();
@@ -782,6 +782,7 @@ function ensureUpcomingOccurrences(taskId = null) {
         createdAt,
         updatedAt: createdAt,
       });
+      existingScheduledKeys.add(scheduledAt);
     }
   }
 
