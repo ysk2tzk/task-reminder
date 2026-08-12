@@ -218,6 +218,10 @@ CREATE INDEX IF NOT EXISTS idx_task_occurrences_skipped_at
 CREATE INDEX IF NOT EXISTS idx_task_occurrences_task_id_scheduled_at
     ON public.task_occurrences (task_id, scheduled_at DESC);
 
+-- 同一タスク・同一予定時刻の occurrence 重複を防止
+CREATE UNIQUE INDEX IF NOT EXISTS uq_task_occurrences_task_id_scheduled_at
+    ON public.task_occurrences (task_id, scheduled_at);
+
 
 -- =========================================================
 -- 6. updated_at 自動更新

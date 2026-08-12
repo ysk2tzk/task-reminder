@@ -148,6 +148,7 @@ curl -X GET http://localhost:3000/api/jobs-dispatch \
   - `task_occurrences.status`
   - `task_occurrences.next_notification_at`
   - `GET /api/jobs-dispatch` の返却値
+  - 旧不具合で同一 `task_id + scheduled_at` の重複 row が残っている場合は `node scripts/cleanup-occurrence-duplicates.mjs` で整理する
 - 完了時に Google Calendar が同期されない
   - 設定画面で Google Calendar が接続済みか確認する
   - `app_settings.google_refresh_token` が保存されているか確認する
@@ -170,6 +171,7 @@ curl -X GET http://localhost:3000/api/jobs-dispatch \
   - VAPID 公開鍵を返します
 - `GET /api/state`
   - Supabase 上の `tasks / task_occurrences / app_settings` を返します
+  - 読み込み前に `task_occurrences` の重複 row を自動整理します
 - `POST /api/state`
   - フロントの状態を Supabase に同期します
 - `POST /api/push-subscriptions`
