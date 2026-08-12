@@ -278,7 +278,7 @@ function renderTaskFormPage(mode, taskId = null) {
         ${mode === "edit" ? `
           <label class="toggle">
             <input name="isActive" type="checkbox" ${values.isActive ? "checked" : ""} />
-            <span>有効にする</span>
+            <span>${values.isActive ? "有効" : "無効"}にする</span>
           </label>
         ` : ""}
 
