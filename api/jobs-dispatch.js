@@ -1,6 +1,7 @@
 import { fromError, methodNotAllowed, ok, createHttpError, getHeader, send } from "../lib/server/http.js";
 import { getSupabaseAdmin } from "../lib/server/supabase.js";
 import { sendPush } from "../lib/server/push.js";
+import { cleanupDuplicateOccurrences, ensurePendingOccurrences } from "../lib/server/state-sync.js";
 
 const JST_DATE_TIME_FORMATTER = new Intl.DateTimeFormat("ja-JP", {
   timeZone: "Asia/Tokyo",
@@ -25,6 +26,8 @@ export default async function handler(request, response) {
     }
 
     const supabase = getSupabaseAdmin();
+    await ensurePendingOccurrences(supabase);
+    await cleanupDuplicateOccurrences(supabase);
     const nowIso = new Date().toISOString();
 
     const { data: occurrences, error: occurrenceError } = await supabase
@@ -74,9 +77,7 @@ export default async function handler(request, response) {
         }
       }
 
-      const nextNotificationAt = new Date(
-        new Date(occurrence.next_notification_at).getTime() + task.reminder_interval_minutes * 60 * 1000
-      ).toISOString();
+      const nextNotificationAt = getNextNotificationAt(nowIso, task.reminder_interval_minutes);
 
       await supabase
         .from("task_occurrences")
@@ -99,4 +100,10 @@ export default async function handler(request, response) {
 
 function formatJstDateTime(value) {
   return JST_DATE_TIME_FORMATTER.format(new Date(value));
+}
+
+function getNextNotificationAt(baseTime, intervalMinutes) {
+  return new Date(
+    new Date(baseTime).getTime() + Math.max(1, Number(intervalMinutes) || 1) * 60 * 1000
+  ).toISOString();
 }

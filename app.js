@@ -744,6 +744,8 @@ function ensureUpcomingOccurrences(taskId = null) {
   const now = startOfDay(new Date());
   const horizon = addDays(now, OCCURRENCE_WINDOW_DAYS);
   const tasks = taskId ? state.tasks.filter((task) => task.id === taskId) : state.tasks;
+  const affectedTaskIds = new Set(tasks.map((task) => task.id));
+  const scheduledDatesByTaskId = new Map();
 
   for (const task of tasks) {
     const existingScheduledKeys = new Set(
@@ -757,6 +759,7 @@ function ensureUpcomingOccurrences(taskId = null) {
     }
 
     const scheduledDates = generateScheduleDates(task, now, horizon);
+    scheduledDatesByTaskId.set(task.id, scheduledDates);
     for (const scheduledAt of scheduledDates) {
       if (existingScheduledKeys.has(scheduledAt)) {
         continue;
@@ -784,11 +787,15 @@ function ensureUpcomingOccurrences(taskId = null) {
     if (occurrence.status !== "pending") {
       return true;
     }
+    if (taskId && !affectedTaskIds.has(occurrence.taskId)) {
+      return true;
+    }
     const task = state.tasks.find((item) => item.id === occurrence.taskId);
     if (!task || !task.isActive) {
       return false;
     }
-    return generateScheduleDates(task, now, horizon).includes(occurrence.scheduledAt);
+    const scheduledDates = scheduledDatesByTaskId.get(task.id) || generateScheduleDates(task, now, horizon);
+    return scheduledDates.includes(occurrence.scheduledAt);
   });
 }
 
@@ -850,6 +857,17 @@ function getNextNotificationSlot(baseTime, intervalMinutes, nowMs = Date.now()) 
   return new Date(nextMs).toISOString();
 }
 
+function getNextNotificationAt(baseTime, intervalMinutes) {
+  const baseDate = toValidDate(baseTime);
+  if (!baseDate) {
+    return null;
+  }
+
+  return new Date(
+    baseDate.getTime() + Math.max(1, Number(intervalMinutes) || 1) * 60 * 1000
+  ).toISOString();
+}
+
 async function refreshPushStatus() {
   const state = getState();
   state.settings.pushEnabled = typeof Notification !== "undefined" && Notification.permission === "granted";
@@ -906,11 +924,10 @@ async function processLocalDueNotifications() {
     if (!task) {
       continue;
     }
+    const notifiedAt = new Date().toISOString();
     sendLocalNotification(`実行支援: ${task.title}`, `予定時刻 ${formatDateTime(occurrence.scheduledAt)} のタスクが未完了です。`);
-    occurrence.nextNotificationAt = new Date(
-      new Date(occurrence.nextNotificationAt).getTime() + task.reminderIntervalMinutes * 60 * 1000
-    ).toISOString();
-    occurrence.updatedAt = new Date().toISOString();
+    occurrence.nextNotificationAt = getNextNotificationAt(notifiedAt, task.reminderIntervalMinutes);
+    occurrence.updatedAt = notifiedAt;
   }
 
   await persistState();
