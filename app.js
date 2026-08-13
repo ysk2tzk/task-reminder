@@ -2,6 +2,7 @@ const APP_VERSION = "0.3.0";
 const OCCURRENCE_WINDOW_DAYS = 30;
 const REQUEST_TIMEOUT_MS = 8000;
 const LOCAL_NOTIFICATION_POLL_MS = 5000;
+const TASKS_PAGE_SIZE = 10;
 const DAY_NAMES = ["日", "月", "火", "水", "木", "金", "土"];
 const DEFAULT_STATE = {
   tasks: [],
@@ -27,6 +28,7 @@ const runtime = {
   loaded: false,
   loadError: "",
   busy: false,
+  pendingOccurrenceAction: null,
   localNotificationTimer: null,
   lastRouteNotice: "",
 };
@@ -68,7 +70,7 @@ function renderApp() {
   }
 
   const route = parseRoute(location.hash || "#/home");
-  app.innerHTML = renderPage(route);
+  app.innerHTML = `${renderPage(route)}${renderGlobalReloadButton()}`;
   markActiveTab(route.name);
 }
 
@@ -143,8 +145,12 @@ function renderHomePage() {
 function renderHomeTaskCard(occurrence, isOverdue) {
   const task = getTaskById(occurrence.taskId);
   const delta = isOverdue ? formatRelativeMinutes(occurrence.scheduledAt) : `通知間隔 ${task.reminderIntervalMinutes}分`;
+  const pendingAction = runtime.pendingOccurrenceAction;
+  const isPending = pendingAction?.id === occurrence.id;
+  const pendingLabel = pendingAction?.type === "complete" ? "完了処理中..." : "スキップ処理中...";
+  const disabled = isPending ? "disabled" : "";
   return `
-    <article class="task-item home-task-item ${isOverdue ? "overdue" : ""}">
+    <article class="task-item home-task-item ${isOverdue ? "overdue" : ""} ${isPending ? "is-pending" : ""}" ${isPending ? `aria-busy="true"` : ""}>
       <div class="task-topline">
         <div>
           <div class="task-title">${escapeHtml(task.title)}</div>
@@ -156,10 +162,11 @@ function renderHomeTaskCard(occurrence, isOverdue) {
         <span>予定: ${formatDateTime(occurrence.scheduledAt)}</span>
         <span>${delta}</span>
       </div>
+      ${isPending ? `<div class="pending-note"><span class="pending-dot" aria-hidden="true"></span><span>${pendingLabel}</span></div>` : ""}
       <div class="actions">
-        <button class="primary-button" data-action="complete-occurrence" data-id="${occurrence.id}" type="button">完了</button>
-        <button class="secondary-button" data-action="skip-occurrence" data-id="${occurrence.id}" type="button">スキップ</button>
-        <button class="ghost-button" data-action="edit-task" data-id="${task.id}" type="button">タスク編集</button>
+        <button class="primary-button" data-action="complete-occurrence" data-id="${occurrence.id}" type="button" ${disabled}>${isPending && pendingAction.type === "complete" ? "処理中..." : "完了"}</button>
+        <button class="secondary-button" data-action="skip-occurrence" data-id="${occurrence.id}" type="button" ${disabled}>${isPending && pendingAction.type === "skip" ? "処理中..." : "スキップ"}</button>
+        <button class="ghost-button" data-action="edit-task" data-id="${task.id}" type="button" ${disabled}>タスク編集</button>
       </div>
     </article>
   `;
@@ -167,17 +174,23 @@ function renderHomeTaskCard(occurrence, isOverdue) {
 
 function renderTasksPage() {
   const tasks = getTasksSorted();
+  const query = parseRouteQuery(location.hash || "");
+  const totalPages = Math.max(1, Math.ceil(tasks.length / TASKS_PAGE_SIZE));
+  const currentPage = Math.min(Math.max(1, Number(query.page) || 1), totalPages);
+  const startIndex = (currentPage - 1) * TASKS_PAGE_SIZE;
+  const visibleTasks = tasks.slice(startIndex, startIndex + TASKS_PAGE_SIZE);
   return `
     <section class="page">
       <section class="page-header">
         <div>
           <h2>タスク一覧</h2>
-          <p>作成日時の新しい順。有効・無効の両方を表示します。</p>
+          <p>有効なタスクを先頭に表示し、その中で作成日時の新しい順に並べています。</p>
         </div>
       </section>
 
       <section class="card stack">
-        ${tasks.length ? tasks.map(renderTaskListItem).join("") : `<p class="list-empty">まだタスクがありません。右下の＋から作成できます。</p>`}
+        ${tasks.length ? visibleTasks.map(renderTaskListItem).join("") : `<p class="list-empty">まだタスクがありません。右下の＋から作成できます。</p>`}
+        ${tasks.length ? renderTasksPagination(currentPage, totalPages, tasks.length) : ""}
       </section>
 
       <button class="fab" data-action="go" data-target="#/task-new" type="button" aria-label="タスクを追加">+</button>
@@ -191,11 +204,11 @@ function renderTaskListItem(task) {
       <div class="task-topline">
         <div>
           <div class="task-title">${escapeHtml(task.title)}</div>
+          <div class="task-meta">${escapeHtml(task.description || "説明なし")}</div>
         </div>
       </div>
       <div class="task-meta task-list-meta-row">
-        <span>${formatTaskRule(task)}</span>
-        <span>通知間隔: ${task.reminderIntervalMinutes}分</span>
+        <span>${formatTaskRule(task)} / 通知間隔: ${task.reminderIntervalMinutes}分</span>
       </div>
       <div class="actions">
         <button class="ghost-button" data-action="edit-task" data-id="${task.id}" type="button">編集</button>
@@ -203,6 +216,26 @@ function renderTaskListItem(task) {
       </div>
     </article>
   `;
+}
+
+function renderTasksPagination(currentPage, totalPages, totalCount) {
+  if (totalPages <= 1) {
+    return `<div class="pagination-summary">${totalCount}件</div>`;
+  }
+  return `
+    <div class="pagination">
+      <div class="pagination-summary">${totalCount}件中 ${((currentPage - 1) * TASKS_PAGE_SIZE) + 1}-${Math.min(currentPage * TASKS_PAGE_SIZE, totalCount)}件を表示</div>
+      <div class="actions pagination-actions">
+        <button class="ghost-button" data-action="tasks-page" data-page="${currentPage - 1}" type="button" ${currentPage <= 1 ? "disabled" : ""}>前へ</button>
+        <span class="pagination-current">${currentPage} / ${totalPages}</span>
+        <button class="ghost-button" data-action="tasks-page" data-page="${currentPage + 1}" type="button" ${currentPage >= totalPages ? "disabled" : ""}>次へ</button>
+      </div>
+    </div>
+  `;
+}
+
+function renderGlobalReloadButton() {
+  return `<button class="reload-fab" data-action="reload-state" type="button" aria-label="再読み込み">↻</button>`;
 }
 
 function renderTaskFormPage(mode, taskId = null) {
@@ -319,6 +352,7 @@ function renderHistoryPage() {
         <form class="search-row" data-form="history-search">
           <input name="query" placeholder="タスク名で検索" value="${escapeAttr(query)}" />
           <button class="secondary-button" type="submit">検索</button>
+          <button class="ghost-button" data-action="clear-history-search" type="button">クリア</button>
         </form>
       </section>
 
@@ -336,14 +370,14 @@ function renderHistoryItem(item) {
   return `
     <button class="history-item" type="button" data-action="open-history" data-id="${item.id}">
       <div class="history-topline">
-        <div>
+        <div class="history-copy">
           <div class="task-title">${escapeHtml(task.title)}</div>
           <div class="history-meta">予定: ${formatDateTime(item.scheduledAt)}</div>
+          <div class="history-meta">実績: ${formatDateTime(actualAt)}</div>
+          <div class="history-meta">${diff}</div>
         </div>
         <span class="badge ${item.status === "completed" ? "success" : "warning"}">${item.status === "completed" ? "完了" : "スキップ"}</span>
       </div>
-      <div class="history-meta">実績: ${formatDateTime(actualAt)}</div>
-      <div class="history-meta">${diff}</div>
     </button>
   `;
 }
@@ -513,6 +547,14 @@ async function handleClick(event) {
       toast("Supabase から再読み込みしました。");
       return;
     }
+    if (action === "clear-history-search") {
+      location.hash = "#/history";
+      return;
+    }
+    if (action === "tasks-page") {
+      updateTasksPage(Number(target.dataset.page) || 1);
+      return;
+    }
     if (action === "toggle-task" && id) {
       await toggleTaskActive(id);
       return;
@@ -656,17 +698,24 @@ async function completeOccurrence(id) {
   if (!occurrence || occurrence.status !== "pending") {
     return;
   }
-  const now = new Date().toISOString();
-  occurrence.status = "completed";
-  occurrence.completedAt = now;
-  occurrence.nextNotificationAt = null;
-  occurrence.updatedAt = now;
-  occurrence.googleEventId = "";
-  occurrence.calendarSyncedAt = null;
-  occurrence.calendarSyncError = "";
-  ensureUpcomingOccurrences(occurrence.taskId);
-  await persistState("タスクを完了にしました。");
+  runtime.pendingOccurrenceAction = { id, type: "complete" };
   renderApp();
+  try {
+    const now = new Date().toISOString();
+    occurrence.status = "completed";
+    occurrence.completedAt = now;
+    occurrence.nextNotificationAt = null;
+    occurrence.updatedAt = now;
+    occurrence.googleEventId = "";
+    occurrence.calendarSyncedAt = null;
+    occurrence.calendarSyncError = "";
+    deactivateOneTimeTaskAfterOccurrence(occurrence.taskId, now);
+    ensureUpcomingOccurrences(occurrence.taskId);
+    await persistState("タスクを完了にしました。");
+  } finally {
+    runtime.pendingOccurrenceAction = null;
+    renderApp();
+  }
 }
 
 async function skipOccurrence(id) {
@@ -675,17 +724,24 @@ async function skipOccurrence(id) {
   if (!occurrence || occurrence.status !== "pending") {
     return;
   }
-  const now = new Date().toISOString();
-  occurrence.status = "skipped";
-  occurrence.skippedAt = now;
-  occurrence.nextNotificationAt = null;
-  occurrence.updatedAt = now;
-  occurrence.googleEventId = "";
-  occurrence.calendarSyncedAt = null;
-  occurrence.calendarSyncError = "";
-  ensureUpcomingOccurrences(occurrence.taskId);
-  await persistState("タスクをスキップしました。");
+  runtime.pendingOccurrenceAction = { id, type: "skip" };
   renderApp();
+  try {
+    const now = new Date().toISOString();
+    occurrence.status = "skipped";
+    occurrence.skippedAt = now;
+    occurrence.nextNotificationAt = null;
+    occurrence.updatedAt = now;
+    occurrence.googleEventId = "";
+    occurrence.calendarSyncedAt = null;
+    occurrence.calendarSyncError = "";
+    deactivateOneTimeTaskAfterOccurrence(occurrence.taskId, now);
+    ensureUpcomingOccurrences(occurrence.taskId);
+    await persistState("タスクをスキップしました。");
+  } finally {
+    runtime.pendingOccurrenceAction = null;
+    renderApp();
+  }
 }
 
 function getOverdueOccurrences(state) {
@@ -732,11 +788,25 @@ function getHistoryItems(query) {
 }
 
 function getTasksSorted() {
-  return [...getState().tasks].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+  return [...getState().tasks].sort((a, b) => {
+    if (a.isActive !== b.isActive) {
+      return a.isActive ? -1 : 1;
+    }
+    return new Date(b.createdAt) - new Date(a.createdAt);
+  });
 }
 
 function getTaskById(id) {
   return getState().tasks.find((task) => task.id === id);
+}
+
+function deactivateOneTimeTaskAfterOccurrence(taskId, updatedAt) {
+  const task = getTaskById(taskId);
+  if (!task || task.scheduleType !== "once" || !task.isActive) {
+    return;
+  }
+  task.isActive = false;
+  task.updatedAt = updatedAt;
 }
 
 function ensureUpcomingOccurrences(taskId = null) {
@@ -1238,6 +1308,11 @@ function announceRouteNotice() {
 function parseRouteQuery(hash) {
   const [, query = ""] = hash.split("?");
   return Object.fromEntries(new URLSearchParams(query).entries());
+}
+
+function updateTasksPage(page) {
+  const safePage = Math.max(1, page);
+  location.hash = `#/tasks?page=${safePage}`;
 }
 
 function formatCalendarOptionLabel(calendar) {
