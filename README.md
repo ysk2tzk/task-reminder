@@ -1,6 +1,6 @@
 # task-reminder
 
-`実行支援.md` をもとに実装した、PWA + Vercel + Supabase 前提のタスクリマインダーです。
+`実行支援.md` を人間向けの基本設計書、`AGENT.md` を実装仕様書として使い分ける、PWA + Vercel + Supabase 前提のタスクリマインダーです。
 
 ## できること
 
