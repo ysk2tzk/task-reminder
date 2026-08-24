@@ -1,7 +1,7 @@
 import { fromError, methodNotAllowed, ok, createHttpError, getHeader, send } from "../lib/server/http.js";
 import { getSupabaseAdmin } from "../lib/server/supabase.js";
 import { sendPush } from "../lib/server/push.js";
-import { cleanupDuplicateOccurrences, ensurePendingOccurrences } from "../lib/server/state-sync.js";
+import { ensurePendingOccurrences } from "../lib/server/state-sync.js";
 
 const JST_DATE_TIME_FORMATTER = new Intl.DateTimeFormat("ja-JP", {
   timeZone: "Asia/Tokyo",
@@ -27,7 +27,6 @@ export default async function handler(request, response) {
 
     const supabase = getSupabaseAdmin();
     await ensurePendingOccurrences(supabase);
-    await cleanupDuplicateOccurrences(supabase);
     const nowIso = new Date().toISOString();
 
     const { data: occurrences, error: occurrenceError } = await supabase
