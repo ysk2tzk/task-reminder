@@ -40,9 +40,10 @@ Web Push や API を含めて動かす場合は、ローカルで `Vercel dev` �
 npm install
 ```
 
-### 2. Supabase にテーブルを作る
+### 2. Supabase にテーブルを作る・更新する
 
 Supabase SQL Editor で [実行支援_DDL.sql](/home/netforce/task-reminder/実行支援_DDL.sql:1) を実行してください。
+既存環境へデプロイする場合も、コード更新前に最新のDDLを実行してください。特に `task_occurrences(task_id, scheduled_at)` の一意インデックスは、予定重複の防止に必須です。
 
 ### 3. 環境変数を用意する
 
@@ -154,6 +155,7 @@ curl -X GET http://localhost:3000/api/jobs-dispatch \
   - 設定画面で Google Calendar が接続済みか確認する
   - `app_settings.google_refresh_token` が保存されているか確認する
   - `task_occurrences.google_event_id` と `calendar_sync_error` を確認する
+  - `Token has been revoked` の場合は、Google Calendar の接続解除後に再接続する
 
 ### ローカル開発時の通知仕様
 
@@ -185,6 +187,8 @@ curl -X GET http://localhost:3000/api/jobs-dispatch \
   - Google OAuth の開始 URL を返します
 - `GET /api/google-calendar-callback`
   - OAuth code を交換して `app_settings` に保存します
+- `POST /api/google-calendar-target`
+  - Google Calendar の登録先を更新します
 - `POST /api/google-calendar-test`
   - 接続済み Calendar にテストイベントを登録します
 - `POST /api/google-calendar-disconnect`
@@ -281,7 +285,7 @@ npx vercel --prod
 デプロイ後の URL を控えます。例:
 
 ```text
-https://task-reminder.vercel.app
+https://<your-domain>
 ```
 
 ### 2. cron-job.org でジョブを作る
@@ -289,7 +293,7 @@ https://task-reminder.vercel.app
 必要なのは次の 2 つです。
 
 - `DISPATCH_BASE_URL`
-  例: `https://task-reminder.vercel.app`
+  例: `https://<your-domain>`
 - `CRON_SECRET`
   Vercel 側に設定したものと同じ値
 

@@ -49,8 +49,29 @@ export default async function handler(request, response) {
     }
 
     let sentCount = 0;
+    let dispatchedOccurrences = 0;
     for (const occurrence of occurrences || []) {
       const task = Array.isArray(occurrence.tasks) ? occurrence.tasks[0] : occurrence.tasks;
+      const nextNotificationAt = getNextNotificationAt(nowIso, task.reminder_interval_minutes);
+      const { data: claimedRows, error: claimError } = await supabase
+        .from("task_occurrences")
+        .update({
+          next_notification_at: nextNotificationAt,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", occurrence.id)
+        .eq("status", "pending")
+        .lte("next_notification_at", nowIso)
+        .select("id");
+
+      if (claimError) {
+        throw createHttpError(500, claimError.message);
+      }
+      if (!claimedRows?.length) {
+        continue;
+      }
+
+      dispatchedOccurrences += 1;
       const payload = {
         title: `実行支援: ${task.title}`,
         body: `予定時刻 ${formatJstDateTime(occurrence.scheduled_at)} のタスクが未完了です。`,
@@ -76,19 +97,10 @@ export default async function handler(request, response) {
         }
       }
 
-      const nextNotificationAt = getNextNotificationAt(nowIso, task.reminder_interval_minutes);
-
-      await supabase
-        .from("task_occurrences")
-        .update({
-          next_notification_at: nextNotificationAt,
-          updated_at: new Date().toISOString(),
-        })
-        .eq("id", occurrence.id);
     }
 
     return send(response, ok({
-      dispatchedOccurrences: occurrences?.length || 0,
+      dispatchedOccurrences,
       sentCount,
       checkedAt: nowIso,
     }));

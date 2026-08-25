@@ -821,7 +821,7 @@ function ensureUpcomingOccurrences(taskId = null) {
     const existingScheduledKeys = new Set(
       state.occurrences
         .filter((item) => item.taskId === task.id)
-        .map((item) => item.scheduledAt)
+        .map((item) => normalizeOccurrenceTimestamp(item.scheduledAt))
     );
 
     if (!task.isActive) {
@@ -865,7 +865,8 @@ function ensureUpcomingOccurrences(taskId = null) {
       return false;
     }
     const scheduledDates = scheduledDatesByTaskId.get(task.id) || generateScheduleDates(task, now, horizon);
-    return scheduledDates.includes(occurrence.scheduledAt);
+    const scheduledKeys = new Set(scheduledDates.map(normalizeOccurrenceTimestamp));
+    return scheduledKeys.has(normalizeOccurrenceTimestamp(occurrence.scheduledAt));
   });
 }
 
@@ -936,6 +937,11 @@ function getNextNotificationAt(baseTime, intervalMinutes) {
   return new Date(
     baseDate.getTime() + Math.max(1, Number(intervalMinutes) || 1) * 60 * 1000
   ).toISOString();
+}
+
+function normalizeOccurrenceTimestamp(value) {
+  const date = toValidDate(value);
+  return date ? date.toISOString() : String(value || "");
 }
 
 async function refreshPushStatus() {
@@ -1158,7 +1164,11 @@ async function saveGoogleCalendarTarget() {
   if (!state.settings.googleCalendarId) {
     throw new Error("登録先カレンダーを選択してください。");
   }
-  await persistState("Google Calendar の登録先を保存しました。");
+  const result = await postJson("/api/google-calendar-target", {
+    googleCalendarId: state.settings.googleCalendarId,
+  });
+  state.settings.googleCalendarId = result.calendarId;
+  toast("Google Calendar の登録先を保存しました。");
   await refreshGoogleCalendarOptions();
   renderApp();
 }
@@ -1228,10 +1238,6 @@ async function persistState(successMessage = "") {
     const remote = await postJson("/api/state", {
       tasks: state.tasks,
       occurrences: state.occurrences,
-      settings: {
-        googleCalendarConnected: state.settings.googleCalendarConnected,
-        googleCalendarId: state.settings.googleCalendarId,
-      },
     });
     applyRemoteState(remote);
     runtime.state.settings.remoteSyncHealthy = true;
