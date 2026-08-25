@@ -173,8 +173,12 @@ curl -X GET http://localhost:3000/api/jobs-dispatch \
 - `GET /api/public-config`
   - VAPID 公開鍵を返します
 - `GET /api/state`
-  - Supabase 上の `tasks / task_occurrences / app_settings` を返します
-  - 読み込み前に今後30日ぶんの `pending` occurrence を補完します
+  - 有効なタスク、`task_occurrences`、`app_settings` を返します
+  - 読み込み前に今後7日ぶんの `pending` occurrence を補完し、ホーム表示に必要な未完了予定だけを返します
+- `GET /api/tasks`
+  - タスク一覧表示用に、有効・無効を含む全タスクを返します
+- `GET /api/history`
+  - 履歴画面表示用に、完了・スキップ履歴を10件単位で返します
 - `POST /api/state`
   - フロントの状態を Supabase に同期します
 - `POST /api/push-subscriptions`

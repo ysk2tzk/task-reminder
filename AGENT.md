@@ -108,8 +108,8 @@
 ### 6.1 生成範囲
 
 - `task_occurrences` は無制限に作らない
-- 現在日から 30 日先までを生成対象とする
-- 実装定数は `OCCURRENCE_WINDOW_DAYS = 30`
+- 現在日から 7 日先までを生成対象とする
+- 実装定数は `OCCURRENCE_WINDOW_DAYS = 7`
 
 ### 6.2 スケジュール別ルール
 

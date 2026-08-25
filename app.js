@@ -1,5 +1,5 @@
 const APP_VERSION = "0.3.0";
-const OCCURRENCE_WINDOW_DAYS = 30;
+const OCCURRENCE_WINDOW_DAYS = 7;
 const REQUEST_TIMEOUT_MS = 8000;
 const LOCAL_NOTIFICATION_POLL_MS = 5000;
 const TASKS_PAGE_SIZE = 10;
@@ -31,6 +31,8 @@ const runtime = {
   pendingOccurrenceAction: null,
   localNotificationTimer: null,
   lastRouteNotice: "",
+  allTasksLoaded: false,
+  history: { items: [], totalCount: 0 },
 };
 
 bootstrap().catch((error) => {
@@ -43,13 +45,18 @@ async function bootstrap() {
   runtime.remoteConfig = await loadRemoteConfig();
   registerServiceWorker();
   window.addEventListener("hashchange", () => {
-    renderApp();
-    announceRouteNotice();
+    loadRouteData().catch((error) => {
+      runtime.loadError = error instanceof Error ? error.message : "タスク一覧の取得に失敗しました。";
+    }).finally(() => {
+      renderApp();
+      announceRouteNotice();
+    });
   });
   document.addEventListener("submit", handleSubmit);
   document.addEventListener("click", handleClick);
   document.addEventListener("change", handleChange);
   await loadStateFromServer();
+  await loadRouteData();
   await refreshPushStatus();
   await suppressLocalNotificationBacklog();
   startLocalNotificationLoop();
@@ -337,7 +344,9 @@ function renderWeekdayOption(value, label, selected) {
 
 function renderHistoryPage() {
   const query = new URLSearchParams(location.hash.split("?")[1] || "").get("q") || "";
-  const histories = getHistoryItems(query);
+  const histories = runtime.history.items;
+  const currentPage = Math.max(1, Number(new URLSearchParams(location.hash.split("?")[1] || "").get("page")) || 1);
+  const totalPages = Math.max(1, Math.ceil(runtime.history.totalCount / TASKS_PAGE_SIZE));
 
   return `
     <section class="page">
@@ -358,13 +367,14 @@ function renderHistoryPage() {
 
       <section class="card stack">
         ${histories.length ? histories.map(renderHistoryItem).join("") : `<p class="list-empty">該当する履歴はありません。</p>`}
+        ${runtime.history.totalCount ? renderHistoryPagination(currentPage, totalPages, runtime.history.totalCount, query) : ""}
       </section>
     </section>
   `;
 }
 
 function renderHistoryItem(item) {
-  const task = getTaskById(item.taskId);
+  const task = getTaskById(item.taskId) || getOccurrenceTaskSnapshot(item);
   const actualAt = item.status === "completed" ? item.completedAt : item.skippedAt;
   const diff = item.status === "completed" ? formatDifference(item.scheduledAt, item.completedAt) : "スキップ";
   return `
@@ -383,11 +393,11 @@ function renderHistoryItem(item) {
 }
 
 function renderHistoryDetailPage(id) {
-  const item = getState().occurrences.find((occurrence) => occurrence.id === id && occurrence.status !== "pending");
+  const item = runtime.history.items.find((occurrence) => occurrence.id === id);
   if (!item) {
     return renderNotFoundPage("履歴が見つかりませんでした。");
   }
-  const task = getTaskById(item.taskId);
+  const task = getTaskById(item.taskId) || getOccurrenceTaskSnapshot(item);
   return `
     <section class="page">
       <section class="page-header">
@@ -542,6 +552,7 @@ async function handleClick(event) {
     }
     if (action === "reload-state") {
       await loadStateFromServer();
+      await loadTasksForListIfNeeded();
       await refreshPushStatus();
       renderApp();
       toast("Supabase から再読み込みしました。");
@@ -646,7 +657,6 @@ async function upsertTaskFromForm(form) {
       ...taskPayload,
       updatedAt: new Date().toISOString(),
     };
-    ensureUpcomingOccurrences(form.dataset.id);
     await persistState("タスクを更新しました。");
   } else {
     const now = new Date().toISOString();
@@ -656,7 +666,6 @@ async function upsertTaskFromForm(form) {
       createdAt: now,
       updatedAt: now,
     });
-    ensureUpcomingOccurrences(state.tasks.at(-1).id);
     await persistState("タスクを登録しました。");
   }
 
@@ -687,7 +696,6 @@ async function toggleTaskActive(taskId) {
   const task = state.tasks.find((item) => item.id === taskId);
   task.isActive = !task.isActive;
   task.updatedAt = new Date().toISOString();
-  ensureUpcomingOccurrences(taskId);
   await persistState(task.isActive ? "タスクを有効化しました。" : "タスクを無効化しました。");
   renderApp();
 }
@@ -710,7 +718,6 @@ async function completeOccurrence(id) {
     occurrence.calendarSyncedAt = null;
     occurrence.calendarSyncError = "";
     deactivateOneTimeTaskAfterOccurrence(occurrence.taskId, now);
-    ensureUpcomingOccurrences(occurrence.taskId);
     await persistState("タスクを完了にしました。");
   } finally {
     runtime.pendingOccurrenceAction = null;
@@ -736,7 +743,6 @@ async function skipOccurrence(id) {
     occurrence.calendarSyncedAt = null;
     occurrence.calendarSyncError = "";
     deactivateOneTimeTaskAfterOccurrence(occurrence.taskId, now);
-    ensureUpcomingOccurrences(occurrence.taskId);
     await persistState("タスクをスキップしました。");
   } finally {
     runtime.pendingOccurrenceAction = null;
@@ -777,7 +783,7 @@ function getHistoryItems(query) {
       if (!normalized) {
         return true;
       }
-      const task = state.tasks.find((taskItem) => taskItem.id === item.taskId);
+      const task = state.tasks.find((taskItem) => taskItem.id === item.taskId) || getOccurrenceTaskSnapshot(item);
       return task?.title.toLowerCase().includes(normalized);
     })
     .sort((a, b) => {
@@ -785,6 +791,12 @@ function getHistoryItems(query) {
       const bTime = new Date(b.completedAt || b.skippedAt || b.updatedAt).getTime();
       return bTime - aTime;
     });
+}
+
+function renderHistoryPagination(currentPage, totalPages, totalCount, query) {
+  if (totalPages <= 1) return `<div class="pagination-summary">${totalCount}件</div>`;
+  const makeHash = (page) => `#/history?page=${page}${query ? `&q=${encodeURIComponent(query)}` : ""}`;
+  return `<div class="pagination"><div class="pagination-summary">${totalCount}件中 ${(currentPage - 1) * TASKS_PAGE_SIZE + 1}-${Math.min(currentPage * TASKS_PAGE_SIZE, totalCount)}件を表示</div><div class="actions pagination-actions"><button class="ghost-button" data-action="go" data-target="${makeHash(currentPage - 1)}" type="button" ${currentPage <= 1 ? "disabled" : ""}>前へ</button><span class="pagination-current">${currentPage} / ${totalPages}</span><button class="ghost-button" data-action="go" data-target="${makeHash(currentPage + 1)}" type="button" ${currentPage >= totalPages ? "disabled" : ""}>次へ</button></div></div>`;
 }
 
 function getTasksSorted() {
@@ -798,6 +810,13 @@ function getTasksSorted() {
 
 function getTaskById(id) {
   return getState().tasks.find((task) => task.id === id);
+}
+
+function getOccurrenceTaskSnapshot(occurrence) {
+  return {
+    title: occurrence.taskTitle || "タスク情報なし",
+    description: occurrence.taskDescription || "",
+  };
 }
 
 function deactivateOneTimeTaskAfterOccurrence(taskId, updatedAt) {
@@ -1207,13 +1226,34 @@ async function loadStateFromServer() {
   const remote = await fetchJson("/api/state");
   const beforeCount = (remote.occurrences || []).length;
   applyRemoteState(remote);
-  ensureUpcomingOccurrences();
+  runtime.allTasksLoaded = false;
   runtime.loaded = true;
   runtime.loadError = "";
   await refreshGoogleCalendarOptions();
   if (runtime.state.occurrences.length !== beforeCount) {
     await persistState();
   }
+}
+
+async function loadTasksForListIfNeeded() {
+  if (runtime.allTasksLoaded || parseRoute(location.hash || "#/home").name !== "tasks") {
+    return;
+  }
+
+  const remote = await fetchJson("/api/tasks");
+  runtime.state.tasks = Array.isArray(remote.tasks) ? remote.tasks : [];
+  runtime.allTasksLoaded = true;
+}
+
+async function loadRouteData() {
+  await loadTasksForListIfNeeded();
+  const route = parseRoute(location.hash || "#/home");
+  if (route.name !== "history") return;
+  const params = new URLSearchParams(location.hash.split("?")[1] || "");
+  const page = params.get("page") || "1";
+  const query = params.get("q") || "";
+  const remote = await fetchJson(`/api/history?page=${encodeURIComponent(page)}&q=${encodeURIComponent(query)}`);
+  runtime.history = { items: remote.occurrences || [], totalCount: remote.totalCount || 0 };
 }
 
 function mergeState(candidate) {
