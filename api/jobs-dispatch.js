@@ -21,7 +21,15 @@ export default async function handler(request, response) {
     const cronSecret = process.env.CRON_SECRET;
     const authHeader = getHeader(request, "authorization");
     const vercelCron = getHeader(request, "x-vercel-cron");
-    if (cronSecret && authHeader !== `Bearer ${cronSecret}` && !vercelCron) {
+    if (cronSecret && authHeader !== "Bearer " + cronSecret && !vercelCron) {
+      console.warn("jobs-dispatch authorization rejected", {
+        cronSecretConfigured: true,
+        authorizationHeaderPresent: Boolean(authHeader),
+        authorizationHeaderUsesBearer: authHeader?.startsWith("Bearer ") ?? false,
+        authorizationHeaderLength: authHeader?.length ?? 0,
+        expectedAuthorizationHeaderLength: 7 + cronSecret.length,
+        vercelCronHeaderPresent: Boolean(vercelCron),
+      });
       throw createHttpError(401, "Unauthorized");
     }
 
