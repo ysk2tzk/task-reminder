@@ -113,6 +113,11 @@ export default async function handler(request, response) {
       checkedAt: nowIso,
     }));
   } catch (error) {
+    console.error("jobs-dispatch failed", {
+      name: error instanceof Error ? error.name : "UnknownError",
+      message: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : undefined,
+    });
     return send(response, fromError(error));
   }
 }
