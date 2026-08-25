@@ -1212,7 +1212,7 @@ function getState() {
 
 async function loadRemoteConfig() {
   try {
-    const response = await fetch("/api/public-config", { headers: { Accept: "application/json" } });
+    const response = await fetch("/api/state?view=public-config", { headers: { Accept: "application/json" } });
     if (!response.ok) {
       return null;
     }

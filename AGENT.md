@@ -223,7 +223,7 @@
 
 ### 9.2 API
 
-- `GET /api/public-config`
+- `GET /api/state?view=public-config`
   - VAPID 公開鍵
   - Push 利用可否
 - `POST /api/push-subscriptions`

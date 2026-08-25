@@ -22,7 +22,6 @@ const MIME_TYPES = {
 };
 
 const API_ROUTES = {
-  "/api/public-config": "./api/public-config.js",
   "/api/state": "./api/state.js",
   "/api/push-subscriptions": "./api/push-subscriptions.js",
   "/api/push-test": "./api/push-test.js",

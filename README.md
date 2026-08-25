@@ -99,7 +99,7 @@ npm run dev:vercel
 
 ### 最初に確認する順番
 
-1. `GET /api/public-config` が返る
+1. `GET /api/state?view=public-config` が返る
 2. `GET /api/state` が返る
 3. 画面からタスク登録できる
 4. Supabase に `tasks` と `task_occurrences` が入る
@@ -110,7 +110,7 @@ npm run dev:vercel
 ### 手動で叩くと便利な API
 
 ```bash
-curl http://localhost:3000/api/public-config
+curl http://localhost:3000/api/state?view=public-config
 curl http://localhost:3000/api/state
 curl -X POST http://localhost:3000/api/push-test \
   -H "Content-Type: application/json" \
@@ -141,7 +141,7 @@ curl -X GET http://localhost:3000/api/jobs-dispatch \
   - `vercel dev` 側ログ
   - Supabase のテーブル定義差分
 - 通知権限は許可したのに Push が来ない
-  - `GET /api/public-config`
+  - `GET /api/state?view=public-config`
   - `POST /api/push-subscriptions`
   - `push_subscriptions` テーブル
   - ブラウザの Service Worker 状態
@@ -170,7 +170,7 @@ curl -X GET http://localhost:3000/api/jobs-dispatch \
 
 ## Web Push 構成
 
-- `GET /api/public-config`
+- `GET /api/state?view=public-config`
   - VAPID 公開鍵を返します
 - `GET /api/state`
   - 有効なタスク、`task_occurrences`、`app_settings` を返します
