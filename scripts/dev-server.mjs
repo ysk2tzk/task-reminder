@@ -23,6 +23,7 @@ const MIME_TYPES = {
 
 const API_ROUTES = {
   "/api/state": "./api/state.js",
+  "/api/tasks": "./api/tasks.js",
   "/api/push-subscriptions": "./api/push-subscriptions.js",
   "/api/push-test": "./api/push-test.js",
   "/api/jobs-dispatch": "./api/jobs-dispatch.js",

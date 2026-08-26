@@ -7,7 +7,6 @@
 - タスク登録・編集・有効/無効切り替え
 - `once / daily / weekly` に応じた予定生成
 - ホームで超過中タスクと今日これからのタスクを表示
-- 完了 / スキップの履歴管理
 - Web Push 購読登録と Service Worker 受信
 - PWA manifest / Service Worker 対応
 - 外部 Cron からの定刻・再通知送信
@@ -177,8 +176,6 @@ curl -X GET http://localhost:3000/api/jobs-dispatch \
   - 読み込み前に今後7日ぶんの `pending` occurrence を補完し、ホーム表示に必要な未完了予定だけを返します
 - `GET /api/tasks`
   - タスク一覧表示用に、有効・無効を含む全タスクを返します
-- `GET /api/history`
-  - 履歴画面表示用に、完了・スキップ履歴を10件単位で返します
 - `POST /api/state`
   - フロントの状態を Supabase に同期します
 - `POST /api/push-subscriptions`

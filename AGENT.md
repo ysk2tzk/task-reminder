@@ -19,7 +19,7 @@
 
 - `index.html` + `app.js` + `styles.css` のシングルページ構成
 - 画面遷移は hash routing を使う
-- 主要画面は `home / tasks / create / edit / history / detail / settings`
+- 主要画面は `home / tasks / create / edit / settings`
 
 ### 3.2 サーバー API
 
@@ -174,24 +174,7 @@
 - 実行条件変更時は pending occurrence を再計算する
 - 無効化しても履歴は残す
 
-### 7.4 履歴
-
-対象:
-
-- `completed`
-- `skipped`
-
-並び順:
-
-- `completed_at` または `skipped_at` の新しい順
-- 補助的に `updated_at` を利用してもよい
-
-検索:
-
-- タスク名の部分一致
-- 大文字小文字は区別しない
-
-### 7.5 設定
+### 7.4 設定
 
 - Google Calendar 接続状態を表示する
 - Push 購読状態を表示する

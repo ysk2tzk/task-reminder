@@ -33,8 +33,6 @@ const runtime = {
   pendingOccurrenceAction: null,
   localNotificationTimer: null,
   lastRouteNotice: "",
-  allTasksLoaded: false,
-  history: { items: [], totalCount: 0 },
 };
 
 bootstrap().catch((error) => {
@@ -100,10 +98,6 @@ function renderPage(route) {
       return renderTaskFormPage("create");
     case "task-edit":
       return renderTaskFormPage("edit", route.id);
-    case "history":
-      return renderHistoryPage();
-    case "history-detail":
-      return renderHistoryDetailPage(route.id);
     case "settings":
       return renderSettingsPage();
     default:
@@ -117,7 +111,12 @@ function renderLoadingPage(message = "") {
       <section class="card">
         <h2>${message ? "読み込みエラー" : "読み込み中"}</h2>
         <p class="muted">${escapeHtml(message || "Supabase からデータを取得しています。")}</p>
-        ${message ? `<div class="actions"><button class="primary-button" data-action="reload-state" type="button">再読み込み</button></div>` : ""}
+        ${message ? `
+          <div class="actions">
+            ${renderReloadStatus()}
+            <button class="primary-button" data-action="reload-state" type="button" ${runtime.reloadBusy ? "disabled" : ""}>${runtime.reloadBusy ? "再読み込み中..." : "再読み込み"}</button>
+          </div>
+        ` : ""}
       </section>
     </section>
   `;
@@ -221,7 +220,7 @@ function renderTaskListItem(task) {
       </div>
       <div class="actions">
         <button class="ghost-button" data-action="edit-task" data-id="${task.id}" type="button">編集</button>
-        <button class="${task.isActive ? "danger-button" : "secondary-button"}" data-action="toggle-task" data-id="${task.id}" type="button">${task.isActive ? "無効化" : "有効化"}</button>
+        <button class="${task.isActive ? "danger-button" : "secondary-button"}" data-action="toggle-task" data-id="${task.id}" type="button">${task.isActive ? "無効にする" : "有効にする"}</button>
       </div>
     </article>
   `;
@@ -246,10 +245,17 @@ function renderTasksPagination(currentPage, totalPages, totalCount) {
 function renderGlobalReloadButton() {
   return `
     <div class="reload-control">
-      ${runtime.reloadBusy ? `<div class="reload-status" aria-live="polite">${escapeHtml(runtime.reloadMessage || "タスク読み込み中...")}</div>` : ""}
+      ${renderReloadStatus()}
       <button class="reload-fab" data-action="reload-state" type="button" aria-label="再読み込み" ${runtime.reloadBusy ? "disabled" : ""}>${runtime.reloadBusy ? "..." : "↻"}</button>
     </div>
   `;
+}
+
+function renderReloadStatus() {
+  if (!runtime.reloadBusy) {
+    return "";
+  }
+  return `<div class="reload-status" aria-live="polite"> ${escapeHtml(runtime.reloadMessage || "タスク読み込み中です。")} </div>`;
 }
 
 function renderTaskFormPage(mode, taskId = null) {
@@ -266,7 +272,7 @@ function renderTaskFormPage(mode, taskId = null) {
   };
 
   const title = mode === "create" ? "タスク登録" : "タスク編集";
-  const description = mode === "create" ? "1回だけ・毎日・曜日指定に対応しています。" : "完了履歴は残したまま設定だけ更新できます。";
+  const description = mode === "create" ? "1回だけ・毎日・曜日指定に対応しています。" : "実行済みの記録を保持したまま設定を更新できます。";
 
   return `
     <section class="page">
@@ -349,94 +355,6 @@ function renderWeekdayOption(value, label, selected) {
   `;
 }
 
-function renderHistoryPage() {
-  const query = new URLSearchParams(location.hash.split("?")[1] || "").get("q") || "";
-  const histories = runtime.history.items;
-  const currentPage = Math.max(1, Number(new URLSearchParams(location.hash.split("?")[1] || "").get("page")) || 1);
-  const totalPages = Math.max(1, Math.ceil(runtime.history.totalCount / TASKS_PAGE_SIZE));
-
-  return `
-    <section class="page">
-      <section class="page-header">
-        <div>
-          <h2>履歴</h2>
-          <p>完了日時・スキップ日時の新しい順で表示します。</p>
-        </div>
-      </section>
-
-      <section class="card">
-        <form class="search-row" data-form="history-search">
-          <input name="query" placeholder="タスク名で検索" value="${escapeAttr(query)}" />
-          <button class="secondary-button" type="submit">検索</button>
-          <button class="ghost-button" data-action="clear-history-search" type="button">クリア</button>
-        </form>
-      </section>
-
-      <section class="card stack">
-        ${histories.length ? histories.map(renderHistoryItem).join("") : `<p class="list-empty">該当する履歴はありません。</p>`}
-        ${runtime.history.totalCount ? renderHistoryPagination(currentPage, totalPages, runtime.history.totalCount, query) : ""}
-      </section>
-    </section>
-  `;
-}
-
-function renderHistoryItem(item) {
-  const task = getTaskById(item.taskId) || getOccurrenceTaskSnapshot(item);
-  const actualAt = item.status === "completed" ? item.completedAt : item.skippedAt;
-  const diff = item.status === "completed" ? formatDifference(item.scheduledAt, item.completedAt) : "スキップ";
-  return `
-    <button class="history-item" type="button" data-action="open-history" data-id="${item.id}">
-      <div class="history-topline">
-        <div class="history-copy">
-          <div class="task-title">${escapeHtml(task.title)}</div>
-          <div class="history-meta">予定: ${formatDateTime(item.scheduledAt)}</div>
-          <div class="history-meta">実績: ${formatDateTime(actualAt)}</div>
-          <div class="history-meta">${diff}</div>
-        </div>
-        <span class="badge ${item.status === "completed" ? "success" : "warning"}">${item.status === "completed" ? "完了" : "スキップ"}</span>
-      </div>
-    </button>
-  `;
-}
-
-function renderHistoryDetailPage(id) {
-  const item = runtime.history.items.find((occurrence) => occurrence.id === id);
-  if (!item) {
-    return renderNotFoundPage("履歴が見つかりませんでした。");
-  }
-  const task = getTaskById(item.taskId) || getOccurrenceTaskSnapshot(item);
-  return `
-    <section class="page">
-      <section class="page-header">
-        <div>
-          <h2>履歴詳細</h2>
-          <p>予定と実績の差分、同期状態を確認できます。</p>
-        </div>
-        <button class="ghost-button" data-action="go" data-target="#/history" type="button">戻る</button>
-      </section>
-
-      <section class="card">
-        <dl class="detail-grid">
-          <dt>タスク名</dt>
-          <dd>${escapeHtml(task.title)}</dd>
-          <dt>説明</dt>
-          <dd>${escapeHtml(task.description || "説明なし")}</dd>
-          <dt>予定日時</dt>
-          <dd>${formatDateTime(item.scheduledAt)}</dd>
-          <dt>状態</dt>
-          <dd>${item.status === "completed" ? "completed" : "skipped"}</dd>
-          <dt>実績日時</dt>
-          <dd>${formatDateTime(item.status === "completed" ? item.completedAt : item.skippedAt)}</dd>
-          <dt>予定との差</dt>
-          <dd>${item.status === "completed" ? formatDifference(item.scheduledAt, item.completedAt) : "スキップのため差分なし"}</dd>
-          <dt>Google Calendar</dt>
-          <dd>${item.googleEventId ? `同期済み (${escapeHtml(item.googleEventId)})` : item.status === "completed" ? escapeHtml(item.calendarSyncError || "未同期") : "対象外"}</dd>
-        </dl>
-      </section>
-    </section>
-  `;
-}
-
 function renderSettingsPage() {
   const state = getState();
   const permission = typeof Notification === "undefined" ? "unsupported" : Notification.permission;
@@ -487,7 +405,8 @@ function renderSettingsPage() {
           <div class="actions">
             <button class="secondary-button" data-action="enable-push" type="button">${remoteReady ? "通知を購読する" : "通知権限を許可"}</button>
             <button class="ghost-button" data-action="test-notification" type="button">テスト通知</button>
-            <button class="ghost-button" data-action="reload-state" type="button">再読み込み</button>
+            ${renderReloadStatus()}
+            <button class="ghost-button" data-action="reload-state" type="button" ${runtime.reloadBusy ? "disabled" : ""}>${runtime.reloadBusy ? "再読み込み中..." : "再読み込み"}</button>
           </div>
         </div>
 
@@ -529,11 +448,6 @@ async function handleSubmit(event) {
       return;
     }
 
-    if (form.dataset.form === "history-search") {
-      event.preventDefault();
-      const query = new FormData(form).get("query")?.toString().trim() || "";
-      location.hash = query ? `#/history?q=${encodeURIComponent(query)}` : "#/history";
-    }
   } catch (error) {
     toast(error instanceof Error ? error.message : "入力内容を確認してください。");
   }
@@ -562,7 +476,7 @@ async function handleClick(event) {
         return;
       }
       runtime.reloadBusy = true;
-      runtime.reloadMessage = "タスク読み込み中...";
+      runtime.reloadMessage = "タスク読み込み中です。";
       renderApp();
       try {
         await loadStateFromServer();
@@ -574,10 +488,6 @@ async function handleClick(event) {
         runtime.reloadMessage = "";
         renderApp();
       }
-      return;
-    }
-    if (action === "clear-history-search") {
-      location.hash = "#/history";
       return;
     }
     if (action === "tasks-page") {
@@ -594,10 +504,6 @@ async function handleClick(event) {
     }
     if (action === "skip-occurrence" && id) {
       await skipOccurrence(id);
-      return;
-    }
-    if (action === "open-history" && id) {
-      location.hash = `#/history-detail/${id}`;
       return;
     }
     if (action === "enable-push") {
@@ -714,7 +620,8 @@ async function toggleTaskActive(taskId) {
   const task = state.tasks.find((item) => item.id === taskId);
   task.isActive = !task.isActive;
   task.updatedAt = new Date().toISOString();
-  await persistState(task.isActive ? "タスクを有効化しました。" : "タスクを無効化しました。");
+  await persistState(task.isActive ? "タスクを有効にしました。" : "タスクを無効にしました。");
+  await loadTasksForList();
   renderApp();
 }
 
@@ -792,31 +699,6 @@ function getTodayUpcomingOccurrences(state) {
     .sort((a, b) => new Date(a.scheduledAt) - new Date(b.scheduledAt));
 }
 
-function getHistoryItems(query) {
-  const state = getState();
-  const normalized = query.trim().toLowerCase();
-  return state.occurrences
-    .filter((item) => item.status !== "pending")
-    .filter((item) => {
-      if (!normalized) {
-        return true;
-      }
-      const task = state.tasks.find((taskItem) => taskItem.id === item.taskId) || getOccurrenceTaskSnapshot(item);
-      return task?.title.toLowerCase().includes(normalized);
-    })
-    .sort((a, b) => {
-      const aTime = new Date(a.completedAt || a.skippedAt || a.updatedAt).getTime();
-      const bTime = new Date(b.completedAt || b.skippedAt || b.updatedAt).getTime();
-      return bTime - aTime;
-    });
-}
-
-function renderHistoryPagination(currentPage, totalPages, totalCount, query) {
-  if (totalPages <= 1) return `<div class="pagination-summary">${totalCount}件</div>`;
-  const makeHash = (page) => `#/history?page=${page}${query ? `&q=${encodeURIComponent(query)}` : ""}`;
-  return `<div class="pagination"><div class="pagination-summary">${totalCount}件中 ${(currentPage - 1) * TASKS_PAGE_SIZE + 1}-${Math.min(currentPage * TASKS_PAGE_SIZE, totalCount)}件を表示</div><div class="actions pagination-actions"><button class="ghost-button" data-action="go" data-target="${makeHash(currentPage - 1)}" type="button" ${currentPage <= 1 ? "disabled" : ""}>前へ</button><span class="pagination-current">${currentPage} / ${totalPages}</span><button class="ghost-button" data-action="go" data-target="${makeHash(currentPage + 1)}" type="button" ${currentPage >= totalPages ? "disabled" : ""}>次へ</button></div></div>`;
-}
-
 function getTasksSorted() {
   return [...getState().tasks].sort((a, b) => {
     if (a.isActive !== b.isActive) {
@@ -828,13 +710,6 @@ function getTasksSorted() {
 
 function getTaskById(id) {
   return getState().tasks.find((task) => task.id === id);
-}
-
-function getOccurrenceTaskSnapshot(occurrence) {
-  return {
-    title: occurrence.taskTitle || "タスク情報なし",
-    description: occurrence.taskDescription || "",
-  };
 }
 
 function deactivateOneTimeTaskAfterOccurrence(taskId, updatedAt) {
@@ -1245,7 +1120,6 @@ async function loadStateFromServer() {
   applyRemoteState(remote);
   const countBeforeEnsure = runtime.state.occurrences.length;
   ensureUpcomingOccurrences();
-  runtime.allTasksLoaded = false;
   runtime.loaded = true;
   runtime.loadError = "";
   await refreshGoogleCalendarOptions();
@@ -1254,25 +1128,17 @@ async function loadStateFromServer() {
   }
 }
 
-async function loadTasksForListIfNeeded() {
-  if (runtime.allTasksLoaded || parseRoute(location.hash || "#/home").name !== "tasks") {
+async function loadTasksForList() {
+  if (parseRoute(location.hash || "#/home").name !== "tasks") {
     return;
   }
 
   const remote = await fetchJson("/api/tasks");
   runtime.state.tasks = Array.isArray(remote.tasks) ? remote.tasks : [];
-  runtime.allTasksLoaded = true;
 }
 
 async function loadRouteData() {
-  await loadTasksForListIfNeeded();
-  const route = parseRoute(location.hash || "#/home");
-  if (route.name !== "history") return;
-  const params = new URLSearchParams(location.hash.split("?")[1] || "");
-  const page = params.get("page") || "1";
-  const query = params.get("q") || "";
-  const remote = await fetchJson(`/api/history?page=${encodeURIComponent(page)}&q=${encodeURIComponent(query)}`);
-  runtime.history = { items: remote.occurrences || [], totalCount: remote.totalCount || 0 };
+  await loadTasksForList();
 }
 
 function mergeState(candidate) {
@@ -1429,23 +1295,6 @@ function formatRelativeMinutes(isoString) {
   }
   const hours = Math.floor(minutes / 60);
   return `${hours}時間${minutes % 60}分超過`;
-}
-
-function formatDifference(from, to) {
-  const fromDate = toValidDate(from);
-  const toDate = toValidDate(to);
-  if (!fromDate || !toDate) {
-    return "予定との差を計算できません";
-  }
-  const diffMinutes = Math.round((toDate.getTime() - fromDate.getTime()) / (60 * 1000));
-  const sign = diffMinutes >= 0 ? "+" : "-";
-  const abs = Math.abs(diffMinutes);
-  const hours = Math.floor(abs / 60);
-  const minutes = abs % 60;
-  if (!hours) {
-    return `予定との差 ${sign}${minutes}分`;
-  }
-  return `予定との差 ${sign}${hours}時間${minutes}分`;
 }
 
 function permissionLabel(permission) {
