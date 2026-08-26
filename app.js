@@ -1,4 +1,4 @@
-const APP_VERSION = "0.3.0";
+const APP_VERSION = "0.3.1";
 const OCCURRENCE_WINDOW_DAYS = 7;
 const REQUEST_TIMEOUT_MS = 8000;
 const LOCAL_NOTIFICATION_POLL_MS = 5000;
@@ -28,6 +28,8 @@ const runtime = {
   loaded: false,
   loadError: "",
   busy: false,
+  reloadBusy: false,
+  reloadMessage: "",
   pendingOccurrenceAction: null,
   localNotificationTimer: null,
   lastRouteNotice: "",
@@ -242,7 +244,12 @@ function renderTasksPagination(currentPage, totalPages, totalCount) {
 }
 
 function renderGlobalReloadButton() {
-  return `<button class="reload-fab" data-action="reload-state" type="button" aria-label="再読み込み">↻</button>`;
+  return `
+    <div class="reload-control">
+      ${runtime.reloadBusy ? `<div class="reload-status" aria-live="polite">${escapeHtml(runtime.reloadMessage || "タスク読み込み中...")}</div>` : ""}
+      <button class="reload-fab" data-action="reload-state" type="button" aria-label="再読み込み" ${runtime.reloadBusy ? "disabled" : ""}>${runtime.reloadBusy ? "..." : "↻"}</button>
+    </div>
+  `;
 }
 
 function renderTaskFormPage(mode, taskId = null) {
@@ -551,11 +558,22 @@ async function handleClick(event) {
       return;
     }
     if (action === "reload-state") {
-      await loadStateFromServer();
-      await loadTasksForListIfNeeded();
-      await refreshPushStatus();
+      if (runtime.reloadBusy) {
+        return;
+      }
+      runtime.reloadBusy = true;
+      runtime.reloadMessage = "タスク読み込み中...";
       renderApp();
-      toast("Supabase から再読み込みしました。");
+      try {
+        await loadStateFromServer();
+        await loadRouteData();
+        await refreshPushStatus();
+        toast("Supabase から再読み込みしました。");
+      } finally {
+        runtime.reloadBusy = false;
+        runtime.reloadMessage = "";
+        renderApp();
+      }
       return;
     }
     if (action === "clear-history-search") {
@@ -1224,13 +1242,14 @@ async function loadRemoteConfig() {
 
 async function loadStateFromServer() {
   const remote = await fetchJson("/api/state");
-  const beforeCount = (remote.occurrences || []).length;
   applyRemoteState(remote);
+  const countBeforeEnsure = runtime.state.occurrences.length;
+  ensureUpcomingOccurrences();
   runtime.allTasksLoaded = false;
   runtime.loaded = true;
   runtime.loadError = "";
   await refreshGoogleCalendarOptions();
-  if (runtime.state.occurrences.length !== beforeCount) {
+  if (runtime.state.occurrences.length !== countBeforeEnsure) {
     await persistState();
   }
 }

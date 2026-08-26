@@ -495,6 +495,31 @@ h1 {
   box-shadow: 0 4px 0 #bd6c35, 0 16px 28px rgba(132, 69, 24, 0.26);
 }
 
+.reload-control {
+  position: fixed;
+  top: max(16px, env(safe-area-inset-top, 0px) + 12px);
+  right: 20px;
+  z-index: 15;
+  display: grid;
+  justify-items: end;
+  gap: 8px;
+}
+
+.reload-control .reload-fab {
+  position: static;
+}
+
+.reload-status {
+  max-width: min(70vw, 240px);
+  padding: 8px 12px;
+  border-radius: 999px;
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.92);
+  border: 1px solid rgba(22, 48, 71, 0.12);
+  box-shadow: 0 12px 26px rgba(22, 48, 71, 0.14);
+  font-size: 0.9rem;
+}
+
 .reload-fab:hover {
   transform: translateY(-2px);
 }

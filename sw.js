@@ -1,4 +1,4 @@
-const CACHE_NAME = "task-reminder-cache-v5";
+const CACHE_NAME = "task-reminder-cache-v6";
 const ASSETS = [
   "./",
   "./index.html",
