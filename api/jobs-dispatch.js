@@ -36,6 +36,7 @@ export default async function handler(request, response) {
     const supabase = getSupabaseAdmin();
     await ensurePendingOccurrences(supabase);
     const nowIso = new Date().toISOString();
+    await expireSupersededOccurrences(supabase, nowIso);
 
     const { data: occurrences, error: occurrenceError } = await supabase
       .from("task_occurrences")
@@ -130,4 +131,44 @@ function getNextNotificationAt(baseTime, intervalMinutes) {
   return new Date(
     new Date(baseTime).getTime() + Math.max(1, Number(intervalMinutes) || 1) * 60 * 1000
   ).toISOString();
+}
+
+async function expireSupersededOccurrences(supabase, nowIso) {
+  const { data: pendingOccurrences, error } = await supabase
+    .from("task_occurrences")
+    .select("id, scheduled_at, tasks!inner(schedule_type, is_active)")
+    .eq("status", "pending")
+    .eq("tasks.is_active", true);
+
+  if (error) {
+    throw createHttpError(500, error.message);
+  }
+
+  const nowMs = new Date(nowIso).getTime();
+  for (const occurrence of pendingOccurrences || []) {
+    const task = Array.isArray(occurrence.tasks) ? occurrence.tasks[0] : occurrence.tasks;
+    const recurrenceDays = task?.schedule_type === "daily" ? 1 : task?.schedule_type === "weekly" ? 7 : 0;
+    if (!recurrenceDays || getNextOccurrenceAt(occurrence.scheduled_at, recurrenceDays) > nowMs) {
+      continue;
+    }
+
+    const { error: updateError } = await supabase
+      .from("task_occurrences")
+      .update({
+        status: "expired",
+        next_notification_at: null,
+        expired_at: nowIso,
+        updated_at: nowIso,
+      })
+      .eq("id", occurrence.id)
+      .eq("status", "pending");
+
+    if (updateError) {
+      throw createHttpError(500, updateError.message);
+    }
+  }
+}
+
+function getNextOccurrenceAt(scheduledAt, recurrenceDays) {
+  return new Date(scheduledAt).getTime() + recurrenceDays * 24 * 60 * 60 * 1000;
 }

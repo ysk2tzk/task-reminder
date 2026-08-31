@@ -76,8 +76,9 @@
 状態ルール:
 
 - 開始状態は `pending`
-- `pending` から `completed` または `skipped` にのみ遷移する
-- `completed` と `skipped` は履歴として保持し、再計算で消さない
+- `pending` から `completed`、`skipped`、または `expired` に遷移する
+- `expired` は日次・週次タスクの次回予定到来時点で、前回分が未完了なら自動遷移する
+- `completed`、`skipped`、`expired` は履歴として保持し、再計算で消さない
 
 ### 4.3 `push_subscriptions`
 
@@ -237,7 +238,7 @@ AND tasks.is_active = true
 ### 10.3 送信後更新
 
 - 通知送信後、`next_notification_at` を通知間隔ぶん進める
-- `completed` または `skipped` に変わったものは以降送信しない
+- `completed`、`skipped`、または `expired` に変わったものは以降送信しない
 
 ## 11. Google Calendar 実装仕様
 

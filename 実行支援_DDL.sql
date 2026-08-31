@@ -83,12 +83,13 @@ CREATE TABLE IF NOT EXISTS public.task_occurrences (
     scheduled_at timestamptz NOT NULL,
 
     status text NOT NULL DEFAULT 'pending'
-        CHECK (status IN ('pending', 'completed', 'skipped')),
+        CHECK (status IN ('pending', 'completed', 'skipped', 'expired')),
 
     next_notification_at timestamptz,
 
     completed_at timestamptz,
     skipped_at timestamptz,
+    expired_at timestamptz,
 
     google_event_id text,
     calendar_synced_at timestamptz,
@@ -118,6 +119,14 @@ CREATE TABLE IF NOT EXISTS public.task_occurrences (
             AND skipped_at IS NOT NULL
             AND next_notification_at IS NULL
         )
+        OR
+        (
+            status = 'expired'
+            AND completed_at IS NULL
+            AND skipped_at IS NULL
+            AND expired_at IS NOT NULL
+            AND next_notification_at IS NULL
+        )
     ),
 
     CONSTRAINT task_occurrences_google_calendar_check
@@ -133,11 +142,59 @@ CREATE TABLE IF NOT EXISTS public.task_occurrences (
 
 COMMENT ON TABLE public.task_occurrences IS 'タスクの1回ごとの実行予定・実績';
 COMMENT ON COLUMN public.task_occurrences.scheduled_at IS '本来の実行日時';
-COMMENT ON COLUMN public.task_occurrences.status IS 'pending / completed / skipped';
+COMMENT ON COLUMN public.task_occurrences.status IS 'pending / completed / skipped / expired';
 COMMENT ON COLUMN public.task_occurrences.next_notification_at IS '次にWeb Push通知を送る日時';
 COMMENT ON COLUMN public.task_occurrences.completed_at IS '完了日時';
 COMMENT ON COLUMN public.task_occurrences.skipped_at IS 'スキップ日時';
 COMMENT ON COLUMN public.task_occurrences.google_event_id IS '完了実績として作成したGoogle CalendarイベントID';
+
+-- 既存環境にも expired 状態を追加する
+ALTER TABLE public.task_occurrences
+    ADD COLUMN IF NOT EXISTS expired_at timestamptz;
+
+COMMENT ON COLUMN public.task_occurrences.expired_at IS '次回予定到来により未完了扱いを終了した日時';
+
+ALTER TABLE public.task_occurrences
+    DROP CONSTRAINT IF EXISTS task_occurrences_status_check;
+
+ALTER TABLE public.task_occurrences
+    ADD CONSTRAINT task_occurrences_status_check
+    CHECK (status IN ('pending', 'completed', 'skipped', 'expired'));
+
+ALTER TABLE public.task_occurrences
+    DROP CONSTRAINT IF EXISTS task_occurrences_status_consistency_check;
+
+ALTER TABLE public.task_occurrences
+    ADD CONSTRAINT task_occurrences_status_consistency_check
+    CHECK (
+        (
+            status = 'pending'
+            AND completed_at IS NULL
+            AND skipped_at IS NULL
+        )
+        OR
+        (
+            status = 'completed'
+            AND completed_at IS NOT NULL
+            AND skipped_at IS NULL
+            AND next_notification_at IS NULL
+        )
+        OR
+        (
+            status = 'skipped'
+            AND completed_at IS NULL
+            AND skipped_at IS NOT NULL
+            AND next_notification_at IS NULL
+        )
+        OR
+        (
+            status = 'expired'
+            AND completed_at IS NULL
+            AND skipped_at IS NULL
+            AND expired_at IS NOT NULL
+            AND next_notification_at IS NULL
+        )
+    );
 
 
 -- =========================================================

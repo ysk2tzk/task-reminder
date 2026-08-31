@@ -42,7 +42,7 @@ npm install
 ### 2. Supabase にテーブルを作る・更新する
 
 Supabase SQL Editor で [実行支援_DDL.sql](/home/netforce/task-reminder/実行支援_DDL.sql:1) を実行してください。
-既存環境へデプロイする場合も、コード更新前に最新のDDLを実行してください。特に `task_occurrences(task_id, scheduled_at)` の一意インデックスは、予定重複の防止に必須です。
+既存環境へデプロイする場合も、コード更新前に最新のDDLを実行してください。特に `task_occurrences(task_id, scheduled_at)` の一意インデックスは、予定重複の防止に必須です。日次・週次タスクの期限切れ処理を利用するには、`expired` 状態と `expired_at` 列を追加する最新DDLが必要です。
 
 ### 3. 環境変数を用意する
 
