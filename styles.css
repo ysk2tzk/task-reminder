@@ -608,6 +608,12 @@ h1 {
   color: var(--text);
 }
 
+/* Keep the browser's native time picker within a split form column. */
+.field input[type="time"] {
+  min-width: 0;
+  max-width: 100%;
+}
+
 .field textarea {
   min-height: 120px;
   resize: vertical;
