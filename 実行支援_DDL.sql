@@ -17,9 +17,11 @@ CREATE TABLE IF NOT EXISTS public.tasks (
     description text,
 
     schedule_type text NOT NULL
-        CHECK (schedule_type IN ('once', 'daily', 'weekly')),
+        CHECK (schedule_type IN ('once', 'daily', 'weekly', 'monthly')),
 
     scheduled_date date,
+    monthly_day smallint
+        CHECK (monthly_day BETWEEN 1 AND 31),
     scheduled_time time NOT NULL,
 
     weekdays smallint[],
@@ -37,20 +39,30 @@ CREATE TABLE IF NOT EXISTS public.tasks (
         (
             schedule_type = 'once'
             AND scheduled_date IS NOT NULL
+            AND monthly_day IS NULL
             AND weekdays IS NULL
         )
         OR
         (
             schedule_type = 'daily'
             AND scheduled_date IS NULL
+            AND monthly_day IS NULL
             AND weekdays IS NULL
         )
         OR
         (
             schedule_type = 'weekly'
             AND scheduled_date IS NULL
+            AND monthly_day IS NULL
             AND weekdays IS NOT NULL
             AND cardinality(weekdays) > 0
+        )
+        OR
+        (
+            schedule_type = 'monthly'
+            AND scheduled_date IS NULL
+            AND monthly_day BETWEEN 1 AND 31
+            AND weekdays IS NULL
         )
     ),
 
@@ -62,10 +74,66 @@ CREATE TABLE IF NOT EXISTS public.tasks (
 );
 
 COMMENT ON TABLE public.tasks IS 'タスク定義';
-COMMENT ON COLUMN public.tasks.schedule_type IS 'once / daily / weekly';
+COMMENT ON COLUMN public.tasks.schedule_type IS 'once / daily / weekly / monthly';
 COMMENT ON COLUMN public.tasks.weekdays IS '曜日指定。0=日, 1=月, 2=火, 3=水, 4=木, 5=金, 6=土';
 COMMENT ON COLUMN public.tasks.reminder_interval_minutes IS '未完了時の再通知間隔（分）';
 COMMENT ON COLUMN public.tasks.is_active IS 'タスクの有効/無効。削除は行わない';
+
+-- 既存環境にも月次タスクの設定を追加する
+ALTER TABLE public.tasks
+    ADD COLUMN IF NOT EXISTS monthly_day smallint;
+
+COMMENT ON COLUMN public.tasks.monthly_day IS '月次タスクの実行日。月末を超える場合はその月の最終日';
+
+ALTER TABLE public.tasks
+    DROP CONSTRAINT IF EXISTS tasks_schedule_type_check;
+
+ALTER TABLE public.tasks
+    ADD CONSTRAINT tasks_schedule_type_check
+    CHECK (schedule_type IN ('once', 'daily', 'weekly', 'monthly'));
+
+ALTER TABLE public.tasks
+    DROP CONSTRAINT IF EXISTS tasks_monthly_day_check;
+
+ALTER TABLE public.tasks
+    ADD CONSTRAINT tasks_monthly_day_check
+    CHECK (monthly_day IS NULL OR monthly_day BETWEEN 1 AND 31);
+
+ALTER TABLE public.tasks
+    DROP CONSTRAINT IF EXISTS tasks_schedule_consistency_check;
+
+ALTER TABLE public.tasks
+    ADD CONSTRAINT tasks_schedule_consistency_check
+    CHECK (
+        (
+            schedule_type = 'once'
+            AND scheduled_date IS NOT NULL
+            AND monthly_day IS NULL
+            AND weekdays IS NULL
+        )
+        OR
+        (
+            schedule_type = 'daily'
+            AND scheduled_date IS NULL
+            AND monthly_day IS NULL
+            AND weekdays IS NULL
+        )
+        OR
+        (
+            schedule_type = 'weekly'
+            AND scheduled_date IS NULL
+            AND monthly_day IS NULL
+            AND weekdays IS NOT NULL
+            AND cardinality(weekdays) > 0
+        )
+        OR
+        (
+            schedule_type = 'monthly'
+            AND scheduled_date IS NULL
+            AND monthly_day BETWEEN 1 AND 31
+            AND weekdays IS NULL
+        )
+    );
 
 
 -- =========================================================

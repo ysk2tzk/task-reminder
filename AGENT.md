@@ -39,7 +39,7 @@
 主な責務:
 
 - タスク自体の定義を持つ
-- `schedule_type` は `once / daily / weekly`
+- `schedule_type` は `once / daily / weekly / monthly`
 - 無効化は `is_active = false` で表現する
 
 主要項目:
@@ -48,6 +48,7 @@
 - `description`
 - `schedule_type`
 - `scheduled_date`
+- `monthly_day`
 - `scheduled_time`
 - `weekdays`
 - `reminder_interval_minutes`
@@ -77,7 +78,7 @@
 
 - 開始状態は `pending`
 - `pending` から `completed`、`skipped`、または `expired` に遷移する
-- `expired` は日次・週次タスクの次回予定到来時点で、前回分が未完了なら自動遷移する
+- `expired` は日次・週次・月次タスクの次回予定到来時点で、前回分が未完了なら自動遷移する
 - `completed`、`skipped`、`expired` は履歴として保持し、再計算で消さない
 
 ### 4.3 `push_subscriptions`
@@ -117,6 +118,7 @@
 - `once`: 指定日・指定時刻の 1 件を生成する
 - `daily`: 対象期間内の毎日分を生成する
 - `weekly`: 指定曜日かつ対象期間内の日付分を生成する
+- `monthly`: 指定日か月末日のうち早い日付かつ対象期間内の日付分を生成する
 
 ### 6.3 初期値
 
@@ -168,6 +170,7 @@
 - `once`: 日付と時刻が必須
 - `daily`: 時刻が必須
 - `weekly`: 曜日と時刻が必須
+- `monthly`: 実行日（1〜31）と時刻が必須。存在しない日は月末日に補正する
 - 通知間隔は分単位で扱う
 
 更新ルール:
@@ -311,6 +314,7 @@ AND tasks.is_active = true
 - ユーザーが「やって」「作成して」「修正して」「追加して」など、実作業を明示的に依頼したときに実装へ進む
 - 相談の流れであっても、実装意思が明確でない場合はコード変更を始めない
 - 明示的な実装依頼がない場合、調査の結果として修正が必要と判断しても、変更前に修正してよいかユーザーへ確認する
+- ユーザーの修正指示に不明点や矛盾があり、仕様を一意に判断できない場合は、指示どおりに実装せず作業を止め、確認の質問をする
 
 ### 15.3 相談段階で許容する作業
 

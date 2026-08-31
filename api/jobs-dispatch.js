@@ -136,7 +136,7 @@ function getNextNotificationAt(baseTime, intervalMinutes) {
 async function expireSupersededOccurrences(supabase, nowIso) {
   const { data: pendingOccurrences, error } = await supabase
     .from("task_occurrences")
-    .select("id, scheduled_at, tasks!inner(schedule_type, is_active)")
+    .select("id, scheduled_at, tasks!inner(schedule_type, monthly_day, is_active)")
     .eq("status", "pending")
     .eq("tasks.is_active", true);
 
@@ -147,8 +147,8 @@ async function expireSupersededOccurrences(supabase, nowIso) {
   const nowMs = new Date(nowIso).getTime();
   for (const occurrence of pendingOccurrences || []) {
     const task = Array.isArray(occurrence.tasks) ? occurrence.tasks[0] : occurrence.tasks;
-    const recurrenceDays = task?.schedule_type === "daily" ? 1 : task?.schedule_type === "weekly" ? 7 : 0;
-    if (!recurrenceDays || getNextOccurrenceAt(occurrence.scheduled_at, recurrenceDays) > nowMs) {
+    const nextOccurrenceAt = getNextOccurrenceAt(occurrence.scheduled_at, task);
+    if (!nextOccurrenceAt || nextOccurrenceAt > nowMs) {
       continue;
     }
 
@@ -169,6 +169,30 @@ async function expireSupersededOccurrences(supabase, nowIso) {
   }
 }
 
-function getNextOccurrenceAt(scheduledAt, recurrenceDays) {
-  return new Date(scheduledAt).getTime() + recurrenceDays * 24 * 60 * 60 * 1000;
+function getNextOccurrenceAt(scheduledAt, task) {
+  if (task?.schedule_type === "daily") {
+    return new Date(scheduledAt).getTime() + 24 * 60 * 60 * 1000;
+  }
+  if (task?.schedule_type === "weekly") {
+    return new Date(scheduledAt).getTime() + 7 * 24 * 60 * 60 * 1000;
+  }
+  if (task?.schedule_type !== "monthly") {
+    return null;
+  }
+
+  const JST_OFFSET_MS = 9 * 60 * 60 * 1000;
+  const jstDate = new Date(new Date(scheduledAt).getTime() + JST_OFFSET_MS);
+  const year = jstDate.getUTCFullYear();
+  const month = jstDate.getUTCMonth();
+  const lastDay = new Date(Date.UTC(year, month + 2, 0)).getUTCDate();
+  const day = Math.min(Number(task.monthly_day), lastDay);
+  return Date.UTC(
+    year,
+    month + 1,
+    day,
+    jstDate.getUTCHours(),
+    jstDate.getUTCMinutes(),
+    jstDate.getUTCSeconds(),
+    jstDate.getUTCMilliseconds()
+  ) - JST_OFFSET_MS;
 }

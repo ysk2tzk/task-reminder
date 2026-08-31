@@ -5,7 +5,7 @@
 ## できること
 
 - タスク登録・編集・有効/無効切り替え
-- `once / daily / weekly` に応じた予定生成
+- `once / daily / weekly / monthly` に応じた予定生成
 - ホームで超過中タスクと今日これからのタスクを表示
 - Web Push 購読登録と Service Worker 受信
 - PWA manifest / Service Worker 対応

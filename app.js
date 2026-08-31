@@ -265,6 +265,7 @@ function renderTaskFormPage(mode, taskId = null) {
     description: "",
     scheduleType: "daily",
     scheduledDate: "",
+    monthlyDay: 1,
     scheduledTime: "09:00",
     weekdays: [1, 2, 3, 4, 5],
     reminderIntervalMinutes: 15,
@@ -272,7 +273,7 @@ function renderTaskFormPage(mode, taskId = null) {
   };
 
   const title = mode === "create" ? "タスク登録" : "タスク編集";
-  const description = mode === "create" ? "1回だけ・毎日・曜日指定に対応しています。" : "実行済みの記録を保持したまま設定を更新できます。";
+  const description = mode === "create" ? "1回だけ・毎日・毎月・曜日指定に対応しています。" : "実行済みの記録を保持したまま設定を更新できます。";
 
   return `
     <section class="page">
@@ -300,6 +301,7 @@ function renderTaskFormPage(mode, taskId = null) {
           <div class="inline-options">
             ${renderScheduleTypeOption("once", "1回だけ", values.scheduleType)}
             ${renderScheduleTypeOption("daily", "毎日", values.scheduleType)}
+            ${renderScheduleTypeOption("monthly", "毎月", values.scheduleType)}
             ${renderScheduleTypeOption("weekly", "曜日指定", values.scheduleType)}
           </div>
         </fieldset>
@@ -314,6 +316,12 @@ function renderTaskFormPage(mode, taskId = null) {
             <label for="scheduledTime">実行時刻</label>
             <input id="scheduledTime" name="scheduledTime" type="time" required value="${escapeAttr(values.scheduledTime)}" />
           </div>
+        </div>
+
+        <div class="field schedule-monthly ${values.scheduleType === "monthly" ? "" : "hidden"}">
+          <label for="monthlyDay">毎月の実行日</label>
+          <input id="monthlyDay" name="monthlyDay" type="number" min="1" max="31" value="${escapeAttr(String(values.monthlyDay || 1))}" />
+          <small>存在しない日は、その月の最終日に実行します。</small>
         </div>
 
         <fieldset class="field fieldset schedule-weekly ${values.scheduleType === "weekly" ? "" : "hidden"}">
@@ -542,6 +550,7 @@ function handleChange(event) {
 
   if (target.name === "scheduleType") {
     document.querySelector(".schedule-once")?.classList.toggle("hidden", target.value !== "once");
+    document.querySelector(".schedule-monthly")?.classList.toggle("hidden", target.value !== "monthly");
     document.querySelector(".schedule-weekly")?.classList.toggle("hidden", target.value !== "weekly");
     return;
   }
@@ -564,6 +573,7 @@ async function upsertTaskFromForm(form) {
     description: formData.get("description")?.toString().trim() || "",
     scheduleType,
     scheduledDate: scheduleType === "once" ? formData.get("scheduledDate")?.toString() || "" : "",
+    monthlyDay: scheduleType === "monthly" ? Number(formData.get("monthlyDay")) : null,
     scheduledTime: formData.get("scheduledTime")?.toString() || "",
     weekdays: scheduleType === "weekly" ? weekdays : [],
     reminderIntervalMinutes: Number(formData.get("reminderIntervalMinutes")),
@@ -612,6 +622,9 @@ function validateTask(task) {
   }
   if (task.scheduleType === "weekly" && !task.weekdays.length) {
     throw new Error("曜日指定の場合は1つ以上選択してください。");
+  }
+  if (task.scheduleType === "monthly" && (!Number.isInteger(task.monthlyDay) || task.monthlyDay < 1 || task.monthlyDay > 31)) {
+    throw new Error("毎月の実行日は1日から31日で入力してください。");
   }
 }
 
@@ -755,6 +768,7 @@ function ensureUpcomingOccurrences(taskId = null) {
         nextNotificationAt: scheduledAt,
         completedAt: null,
         skippedAt: null,
+        expiredAt: null,
         googleEventId: "",
         calendarSyncedAt: null,
         calendarSyncError: "",
@@ -799,6 +813,9 @@ function generateScheduleDates(task, start, end) {
     if (task.scheduleType === "weekly") {
       shouldInclude = task.weekdays.includes(cursor.getDay());
     }
+    if (task.scheduleType === "monthly") {
+      shouldInclude = cursor.getDate() === getMonthlyScheduledDay(cursor, task.monthlyDay);
+    }
 
     if (shouldInclude) {
       const scheduledAt = combineDateAndTime(dateKey, task.scheduledTime);
@@ -811,6 +828,11 @@ function generateScheduleDates(task, start, end) {
   }
 
   return dates;
+}
+
+function getMonthlyScheduledDay(date, monthlyDay) {
+  const lastDay = new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate();
+  return Math.min(monthlyDay, lastDay);
 }
 
 function combineDateAndTime(dateKey, timeKey) {
@@ -1263,6 +1285,9 @@ function formatTaskRule(task) {
   }
   if (task.scheduleType === "daily") {
     return `毎日 / ${task.scheduledTime}`;
+  }
+  if (task.scheduleType === "monthly") {
+    return `毎月${task.monthlyDay}日 / ${task.scheduledTime}`;
   }
   return `曜日指定 / ${task.weekdays.map((weekday) => DAY_NAMES[weekday]).join("・")} / ${task.scheduledTime}`;
 }
